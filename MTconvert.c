@@ -30,6 +30,14 @@ int main(void)
     // Fourier analysis results
     double *pfourier = NULL;
     double *pfourierror = NULL;
+    
+    PSopen("spectrum.ps");      // Open PostScript file for output
+	PSsetfont("Times-Roman", 10.0);
+
+	const int writeEvery = 440; // about 100 frames per second at 44.1 kHz
+	const int mintone = 0;      // lowest tone index
+	const int ntones = 288;     // full spectrum range
+
 
     // Read, process, and analyze samples in a loop
     i = 0;
@@ -51,18 +59,19 @@ int main(void)
 
         // Compute elapsed time (example placeholder)
         seconds = (double)i / 44100.0; // assuming 44.1 kHz sampling rate
-
-		// --- Write Fourier data every N samples ---
-		const int writeEvery = 440; // about 100 frames per second at 44.1 kHz
+		// --- Write and plot every N samples ---
 		if (i % writeEvery == 0) {
 			retcode = writefourier(i, seconds, avgvol, pfourier, pfourierror);
 			if (retcode != 0) {
 				fprintf(stderr, "writefourier failed at %.3f s\n", seconds);
 				break;
 			}
+
+		// Also plot the spectrum
+			plotfourier(i, seconds, avgvol, pfourier, pfourierror, mintone, ntones);
 		}
 
-			// Print RMS every so often (optional)
+		// Print RMS every so often (optional)
         if (i % 1000 == 0) {
             double vr = sqrt(vrms / i);
             fprintf(stderr, "vrms = %.0f\n", vr);
@@ -74,6 +83,9 @@ int main(void)
         double vr = sqrt(vrms / i);
         fprintf(stderr, "Final vrms = %.0f (samples: %d)\n", vr, i);
     }
+    
+    PSclose();  // close PostScript file
+
 
     return 0;
 }
