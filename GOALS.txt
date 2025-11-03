@@ -1,0 +1,24 @@
+Goal
+
+MTconvert:
+
+Reads an input audio file (e.g. test_440.wav).
+Normally writes spectrum data to a file (filename is given as input argument)
+If filename is missing, writes to stdout to allow pipe to MTgraph and other possible future implementations
+Optionally takes a PostScript filename as a command-line argument to produce a PS plot (e.g. "spectrum.ps").
+
+
+
+MTgraph:
+
+Reads the spectrum data file (filename is given as input argument)
+If filename is missing, reads from stdin to allow pipe from MTconvert and other possible future implementations
+Takes a PostScript filename as a command-line argument for the output image (e.g. "spectrogram.ps").
+If no filename is given, defaults to spectrogram.ps
+
+
+# Write spectrum to a file 
+./MTconvert test_440.wav spectrum.txt
+
+# Write spectrum to stdout (no PS file)
+./MTconvert test_440.wav > spectrum.txt

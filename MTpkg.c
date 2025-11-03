@@ -33,20 +33,8 @@
 #include <stdlib.h>
 #include "PSpkg.h"
 #include "MTpkg.h"
-
-// global constants
-
-// lowest frequency of spectrum
-#define MINFREQ (27.5)
-
-// corresponding "note" (0.=C, 1.=C#, 2.=D, 3.=D# ...)
-#define MINNOTE (9.) // it's an A
-
-// number of frequencies in spectrum
-#define NFREQS (288)
-
-// number of frequency steps in one semitones
-#define TONESTEPS (3)
+#include <string.h>
+#include <ctype.h>   // for isspace()
 
 
 //**********************************************
@@ -75,59 +63,50 @@ short int flip2bytes(short int input){
   return result;
 }
 
-//**********************************************
-
-// Provides next sample from file
-// Assumes file is already open
-//
-// Return values: 0 = OK
-//                1 = EOF
-//                2 = Error
-
 int getsample(int *sample, FILE *infile) {
 #define MAXDATA 16384
-#define RIFF (1179011410)
-#define WAVE (1163280727)
-#define FMT  (544501094)
-#define DATA (1635017060)
-
     static short int isfirst = 1;
     static short int data[MAXDATA];
     static int datapointer = MAXDATA;
-    static size_t nread;
-
+    static size_t nread = 0;
     static long dataStart = 0; // file position of PCM data
-    int idata[256];
-    int ierr = 0;
 
     if (isfirst) {
         isfirst = 0;
-
-        // --- Read and validate RIFF/WAVE ---
-        nread = fread(idata, 4, 3, infile);
-        if (nread != 3) { fprintf(stderr,"File too short\n"); return 2; }
-        if (idata[0] != RIFF) { fprintf(stderr,"Not a RIFF file\n"); return 2; }
-        if (idata[2] != WAVE) { fprintf(stderr,"WAVE chunk not found\n"); return 2; }
+        // --- Read and validate RIFF/WAVE header ---
+        unsigned char hdr[12];
+        if (fread(hdr, 1, 12, infile) != 12) {
+            fprintf(stderr, "File too short\n");
+            return 2;
+        }
+        if (memcmp(hdr, "RIFF", 4) != 0) {
+            fprintf(stderr, "Not a RIFF file\n");
+            return 2;
+        }
+        if (memcmp(hdr + 8, "WAVE", 4) != 0) {
+            fprintf(stderr, "WAVE chunk not found\n");
+            return 2;
+        }
 
         // --- Search for "data" marker anywhere in first 1 kB ---
-        rewind(infile);
+        fseek(infile, 0, SEEK_SET);
         unsigned char buf[1024];
-        size_t bytes = fread(buf,1,sizeof(buf),infile);
+        size_t bytes = fread(buf, 1, sizeof(buf), infile);
         int found = 0;
-        for (size_t i=0;i+4<bytes;i++){
-            if (buf[i]=='d' && buf[i+1]=='a' && buf[i+2]=='t' && buf[i+3]=='a'){
+        for (size_t i = 0; i + 4 < bytes; i++) {
+            if (buf[i] == 'd' && buf[i+1] == 'a' && buf[i+2] == 't' && buf[i+3] == 'a') {
                 found = 1;
                 dataStart = i + 8; // skip "data" + length
                 break;
             }
         }
-        if (!found){
-            fprintf(stderr,"DATA chunk not found\n");
+        if (!found) {
+            fprintf(stderr, "DATA chunk not found\n");
             return 2;
         }
 
-        // seek to start of data
         fseek(infile, dataStart, SEEK_SET);
+        fprintf(stderr, "Reading PCM data starting at byte %ld\n", dataStart);
     }
 
     // --- refill data buffer if needed ---
@@ -142,6 +121,7 @@ int getsample(int *sample, FILE *infile) {
     *sample += data[datapointer++];
     return 0;
 }
+
 
 
 //*************************************
@@ -321,6 +301,9 @@ int autofourier(int sample,int opt, double **pfourier, double **pfourierror){
 
 void plotfourier(int isample,double seconds, double avgvol, double *fourier, double *fourierror, int mintone, int ntones){
 
+fprintf(stderr, "plotfourier() entered, PSfile=%p\n", (void*)PSfile);/////////////debug
+
+
 // decay time of maximum in seconds
 #define SCALETIMECONSTANT (5.)
 
@@ -408,9 +391,9 @@ void plotfourier(int isample,double seconds, double avgvol, double *fourier, dou
   PSmoveto(XHILEFT+XLEN,YHILEFT+10.);
   PSshowright(stemp);
 
+  
+  //PSline(50, 750, 50+500, 750-700, 1.5, 0.,0.,0.);  // should appear clearly
 
-  // draw zero line
-  //  PSline(XHILEFT-minvalue*scale,YHILEFT,XHILEFT-minvalue*scale,YHILEFT-YLEN,1.,0.,0.,0.);
 
    // draw all points with error bars
   for(itone=mintone;itone<mintone+ntones;++itone){
@@ -459,215 +442,161 @@ double volume(int sample){
 }
 
 
-//
-// write pseudo-fourier spectrum to stdout
-//
+//============================================================
+// writefourier()
+// Writes one pseudo-Fourier spectrum record in text format
+// Header is written only once at the beginning of the stream
+//============================================================
 
-int writefourier(int isample, double seconds, double avgvol, double *fourier, double *fourierror){
+int writefourier(int isample, double seconds, double avgvol,
+                 double *fourier, double *fourierror)
+{
+    static int isfirst = 1;
+    if (isfirst) {
+        printf("# version 1\n");
+        printf("# minfreq %.6f\n", MINFREQ);
+        printf("# minnote %.6f\n", MINNOTE);
+        printf("# nfreqs %d\n", NFREQS);
+        printf("# tonesteps %d\n", TONESTEPS);
+        isfirst = 0;
+    }
 
-  static int isfirst = 1;
-  static int version = 1;
-  static double minfreq = MINFREQ, minnote = MINNOTE;
-  static int nfreqs = NFREQS, tonesteps = TONESTEPS;
+	//fprintf(stderr, "DEBUG1: writing frame %d (NFREQS=%d)\n", isample, NFREQS);
 
-  size_t nwrite;
 
-  if(isfirst == 1){
-    //
-    // initialization: executed only first time called
-    //
-    isfirst = 0;
+    // --- Record header line ---
+    printf("%d %.6f %.6e\n", isample, seconds, avgvol);
 
-    // write header
-    // file format version
-    nwrite=fwrite(&version,sizeof(version),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr,"Failed writing header:version\n");
-      return 1;
+    // --- Fourier amplitudes (10 per line) ---
+    for (int i = 0; i < NFREQS; ++i) {
+        printf(" %.6e", fourier[i]);
+        if ((i + 1) % 10 == 0) printf("\n");
     }
-    // minimum frequency
-    nwrite=fwrite(&minfreq,sizeof(minfreq),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr,"Failed writing header:minfreq\n");
-      return 1;
-    }
-    // minimum note
-    nwrite=fwrite(&minnote,sizeof(minnote),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr,"Failed writing header:minnote\n");
-      return 1;
-    }
-    // number of frequencies in spectrum
-    nwrite=fwrite(&nfreqs,sizeof(nfreqs),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr,"Failed writing header:nfreqs\n");
-      return 1;
-    }
-    // number of steps in one semitone
-    nwrite=fwrite(&tonesteps,sizeof(tonesteps),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr,"Failed writing header:tonesteps\n");
-      return 1;
-    }
-  }
+    if (NFREQS % 10 != 0) printf("\n");
 
-  // body of function
-  // executed all times
+    // --- Fourier errors (10 per line) ---
+    for (int i = 0; i < NFREQS; ++i) {
+        printf(" %.6e", fourierror[i]);
+        if ((i + 1) % 10 == 0) printf("\n");
+    }
+    if (NFREQS % 10 != 0) printf("\n");
+    
+    //fprintf(stderr, "DEBUG2: writing frame %d (NFREQS=%d)\n", isample, NFREQS);
 
-  nwrite=fwrite(&isample,sizeof(int),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr, "Failed writing at %.3f s, nwrite = %zu\n", seconds, nwrite);
-      return 1;
-    }
-  nwrite=fwrite(&seconds,sizeof(double),1,stdout);
-    if(nwrite != 1){
-      fprintf(stderr, "Failed writing at %.3f s, nwrite = %zu\n", seconds, nwrite);
-      return 1;
-    }
-  nwrite=fwrite(&avgvol,sizeof(double),1,stdout);
-    if(nwrite != 1){
-       fprintf(stderr, "Failed writing at %.3f s, nwrite = %zu\n", seconds, nwrite);
-      return 1;
-    }
-  nwrite=fwrite(fourier,sizeof(double),nfreqs,stdout);
-    if(nwrite != nfreqs){
-      fprintf(stderr, "Failed writing at %.3f s, nwrite = %zu\n", seconds, nwrite);
-      return 1;
-    }
-  nwrite=fwrite(fourierror,sizeof(double),nfreqs,stdout);
-    if(nwrite != nfreqs){
-      fprintf(stderr, "Failed writing at %.3f s, nwrite = %zu\n", seconds, nwrite);
-      return 1;
-    }
+
     return 0;
 }
 
-// check contents of header of input file
 
-int checkheader(){
 
-  int nread;
-  int ierr=0; 
-  int correctversion = 1;
-  int version, nfreqs, tonesteps;
-  double minfreq, minnote;
 
-  // check version number
+// read text header lines (for text-based spectrum.txt)
+int checkheader() {
+    char line[256];
+    int version = 0, nfreqs = 0, tonesteps = 0;
+    double minfreq = 0.0, minnote = 0.0;
 
-  nread = fread(&version,sizeof(version),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed reading header:version\n");
-    return 1;
-  }
-  if(version != correctversion){
-    fprintf(stderr,"File format version is %d. Should be %d\n",
-	    version, correctversion);
-    ierr=1;
-  }
+    // read header lines beginning with '#'
+    while (fgets(line, sizeof(line), stdin)) {
+        if (line[0] != '#') break; // stop when data begins
+        sscanf(line, "# version %d", &version);
+        sscanf(line, "# minfreq %lf", &minfreq);
+        sscanf(line, "# minnote %lf", &minnote);
+        sscanf(line, "# nfreqs %d", &nfreqs);
+        sscanf(line, "# tonesteps %d", &tonesteps);
+    }
 
-  // check minimum frequency
+    fprintf(stderr, "version %d\n minfreq %.2f\n minnote %.2f\n nfreqs %d\n tonesteps %d\n",
+            version, minfreq, minnote, nfreqs, tonesteps);
 
-  nread = fread(&minfreq,sizeof(minfreq),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed reading header:minfreq\n");
-    return 1;
-  }
-  if(minfreq != MINFREQ){
-    fprintf(stderr,"minfreq is %.2f. Should be %.2f\n",
-	    minfreq, MINFREQ);
-    ierr=1;
-  }
+    // loose validation
+    if (version != 1) fprintf(stderr, "Warning: unexpected version %d\n", version);
+    if (nfreqs != NFREQS) fprintf(stderr, "Warning: file nfreqs=%d != code NFREQS=%d\n", nfreqs, NFREQS);
 
-  // check minimum note
-
-  nread = fread(&minnote,sizeof(minnote),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed reading header:minnote\n");
-    return 1;
-  }
-  if(minnote != MINNOTE){
-    fprintf(stderr,"minnote is %.2f. Should be %.2f\n",
-	    minnote, MINNOTE);
-    ierr=1;
-  }
-
-  // check number of frequencies
-
-  nread = fread(&nfreqs,sizeof(nfreqs),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed reading header:nfreqs\n");
-    return 1;
-  }
-  if(nfreqs != NFREQS){
-    fprintf(stderr,"nfreqs is %d. Should be %d\n",
-	    nfreqs, NFREQS);
-    ierr=1;
-  }
-
-  // check number of steps in one semitone
-
-  nread = fread(&tonesteps,sizeof(tonesteps),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed reading header:tonesteps\n");
-    return 1;
-  }
-  if(tonesteps != TONESTEPS){
-    fprintf(stderr,"tonesteps is %d. Should be %d\n",
-	    tonesteps, TONESTEPS);
-    ierr=1;
-  }
-
-  fprintf(stderr,"version %d\n minfreq %.2f\n minnote %.2f\n nfreqs %d\n tonesteps %d\n",
-	  version,minfreq,minnote,nfreqs,tonesteps);
-
-  if(ierr != 0) return 1;
-  return 0;
+    return 0; // success
 }
-   
-// read one record from input file
 
-int readfourier(int *isample, double *seconds, double *avgvol, 
-		double *fourier, double *fourierror){
+//============================================================
+// readfourier()
+// Reads one pseudo-Fourier spectrum record (text format)
+// Expects the following structure:
+//   # version 1
+//   # minfreq ...
+//   # minnote ...
+//   # nfreqs ...
+//   # tonesteps ...
+//   isample seconds avgvol
+//   <NFREQS Fourier values, 10 per line>
+//   <NFREQS Fourier error values, 10 per line>
+//============================================================
 
-  int nread;
+int readfourier(int *isample, double *seconds, double *avgvol,
+                double *fourier, double *fourierror)
+{
+    char line[4096];
+    int count;
+            //fprintf(stderr, "DEBUG: readfourier called\n");
 
-  // check for EOF
-  
-  if(feof(stdin)){
-    fprintf(stderr," EOF on input\n");
-    return 1;
-  }
+    // Skip comment lines until we find the header line
+    for(;;){
+        if (!fgets(line, sizeof(line), stdin)) return 0;  // EOF
+            //fprintf(stderr, "DEBUG1: line read %s\n", line);
+     if (line[0] != '#') break;
+	}
+    // Parse the three header numbers
+    if (sscanf(line, "%d %lf %lf", isample, seconds, avgvol) != 3) {
+        fprintf(stderr, "Error: bad header line: %s\n", line);
+        return -1;
+    }
+     
+//fprintf(stderr, "DEBUG read %d %lf %lf \n\n", *isample, *seconds, *avgvol);
 
-  // start reading
+    // ---- Read NFREQS Fourier values ----
+    count = 0;
+    while (count < NFREQS && fgets(line, sizeof(line), stdin)) {
+           // fprintf(stderr, "DEBUG2: line read %s\n", line);
+        if (line[0] == '#' || strlen(line) < 2) continue;
+        char *p = line;
+        while (*p && count < NFREQS) {
+            double val;
+            int n;
+            if (sscanf(p, "%lf%n", &val, &n) == 1) {
+                fourier[count++] = val;
+                p += n;
+            } else break;
+        }
+    }
+    if (count != NFREQS) {
+        fprintf(stderr, "Error: read %d of %d Fourier values\n", count, NFREQS);
+        return -1;
+    }
 
-  nread = fread(isample,sizeof(int),1,stdin);
+    // ---- Read NFREQS Fourier error values ----
+    count = 0;
+    while (count < NFREQS && fgets(line, sizeof(line), stdin)) {
+            //fprintf(stderr, "DEBUG3: line read %s\n", line);
+        if (line[0] == '#' || strlen(line) < 2) continue;
+        char *p = line;
+        while (*p && count < NFREQS) {
+            double val;
+            int n;
+            if (sscanf(p, "%lf%n", &val, &n) == 1) {
+                fourierror[count++] = val;
+                p += n;
+            } else break;
+        }
+    }
+    if (count != NFREQS) {
+        fprintf(stderr, "Error: read %d of %d Fourier error values\n", count, NFREQS);
+        return -1;
+    }
 
-  if(nread != 1){
-    fprintf(stderr,"Failed to read input record:isample\n");
-    return 2;
-  }
-  nread = fread(seconds,sizeof(double),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed to read input record:seconds\n");
-    return 2;
-  }
-  nread = fread(avgvol,sizeof(double),1,stdin);
-  if(nread != 1){
-    fprintf(stderr,"Failed to read input record:avgvol\n");
-    return 2;
-  }
-
-
-  nread = fread(fourier,sizeof(double),NFREQS,stdin);
-  if(nread != NFREQS){
-    fprintf(stderr,"Failed to read fourier data: nread = %d. Should be %d\n", nread,NFREQS);
-    return 2;
-  }
-  nread = fread(fourierror,sizeof(double),NFREQS,stdin);
-  if(nread != NFREQS){
-    fprintf(stderr,"Failed to read fourierror data: nread = %d. Should be %d\n", nread,NFREQS);
-    return 2;
-  }
-
-  return 0;
+    return 1;  // success
 }
+
+       
+
+
+
+
+

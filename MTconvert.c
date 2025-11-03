@@ -1,91 +1,153 @@
 //===============================================================
 // File: MTconvert.c
 // Purpose: Main converter / analyzer for MyTunesNew
-//===============================================================
 //
-// Uses helper functions from:
-//   - MTpkg.c   (signal and Fourier analysis)
-//   - PSpkg.c   (PostScript plotting utilities)
+// Usage:
+//   MTconvert input.wav
+//       -> reads input.wav, writes spectrum text to stdout, no PS
 //
-// Build with: make
+//   MTconvert input.wav spectrum.txt
+//       -> reads input.wav, writes spectrum text to spectrum.txt, no PS
+//
+//   MTconvert input.wav spectrum.txt spectrum.ps
+//       -> reads input.wav, writes spectrum text to spectrum.txt,
+//          AND writes per-frame PS plots to spectrum.ps
+//
+//   (you can also do)
+//   MTconvert input.wav - spectrum.ps
+//       -> spectrum to stdout, PS to spectrum.ps
+//
+// Notes:
+//   - actual spectrum writing is still done by writefourier(...) in MTpkg.c
+//   - actual plotting is still done by plotfourier(...) in MTpkg.c
 //===============================================================
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include "MTpkg.h"
 #include "PSpkg.h"
 
-//---------------------------------------------------------------
-// Main program
-//---------------------------------------------------------------
-int main(void)
+int main(int argc, char *argv[])
 {
-    int i, retcode;
+    FILE *inwav = stdin;
+    const char *spectrum_out = NULL;
+    const char *ps_out = NULL;
+    int have_ps = 0;
+
+    // ------------------------------------------------------------
+    // Parse command line
+    // ------------------------------------------------------------
+    // argv[1] = input wav
+    // argv[2] = spectrum text file (or "-" for stdout)
+    // argv[3] = PS output file
+    if (argc < 2) {
+        fprintf(stderr,
+                "Usage: %s input.wav [spectrum.txt|-] [spectrum.ps]\n",
+                argv[0]);
+        return 1;
+    }
+
+    // open input wav
+    inwav = fopen(argv[1], "rb");
+    if (!inwav) {
+        perror("Cannot open input wav");
+        return 1;
+    }
+
+    // spectrum destination
+    if (argc >= 3) {
+        spectrum_out = argv[2];
+        if (strcmp(spectrum_out, "-") != 0) {
+            // redirect stdout to spectrum file
+            if (!freopen(spectrum_out, "w", stdout)) {
+                perror("Cannot open spectrum output file");
+                fclose(inwav);
+                return 1;
+            }
+        }
+        // else: leave stdout as is
+    }
+
+    // PS destination (optional)
+    if (argc >= 4) {
+        ps_out = argv[3];
+        PSopen(ps_out);
+        have_ps = 1;
+    } else {
+        have_ps = 0; // no PS output
+    }
+
+    // ------------------------------------------------------------
+    // Processing loop (mostly your original code)
+    // ------------------------------------------------------------
+    int i = 0;
+    int retcode;
     int sample;
     double vrms = 0.0;
     double seconds = 0.0;
     double avgvol = 0.0;
-
-    // Fourier analysis results
     double *pfourier = NULL;
     double *pfourierror = NULL;
-    
-    PSopen("spectrum.ps");      // Open PostScript file for output
-	PSsetfont("Times-Roman", 10.0);
 
-	const int writeEvery = 440; // about 100 frames per second at 44.1 kHz
-	const int mintone = 0;      // lowest tone index
-	const int ntones = 288;     // full spectrum range
+    const int writeEvery = 441;   // every 441 samples (~0.01s @ 44.1kHz)
+    const int mintone    = 0;
+    const int ntones     = NFREQS;
 
+    while ((retcode = getsample(&sample, inwav)) == 0) {
 
-    // Read, process, and analyze samples in a loop
-    i = 0;
-    while ((retcode = getsample(&sample, stdin)) == 0) {
-
-        // Accumulate RMS
+        // accumulate RMS
         vrms += (double)(sample * sample);
         ++i;
 
-        // Perform Fourier analysis
+        // feed analyzer
         retcode = autofourier(sample, 0, &pfourier, &pfourierror);
         if (retcode != 0) {
             fprintf(stderr, "autofourier failed at sample %d\n", i);
             break;
         }
 
-        // Compute volume
+        // running volume
         avgvol = volume(sample);
 
-        // Compute elapsed time (example placeholder)
-        seconds = (double)i / 44100.0; // assuming 44.1 kHz sampling rate
-		// --- Write and plot every N samples ---
-		if (i % writeEvery == 0) {
-			retcode = writefourier(i, seconds, avgvol, pfourier, pfourierror);
-			if (retcode != 0) {
-				fprintf(stderr, "writefourier failed at %.3f s\n", seconds);
-				break;
-			}
+        // time in seconds
+        seconds = (double)i / 44100.0;
 
-		// Also plot the spectrum
-			plotfourier(i, seconds, avgvol, pfourier, pfourierror, mintone, ntones);
-		}
+        // every N samples, dump a frame (text) and optionally make a PS page
+        if (i % writeEvery == 0) {
+            retcode = writefourier(i, seconds, avgvol, pfourier, pfourierror);
+            if (retcode != 0) {
+                fprintf(stderr, "writefourier failed at %.3f s\n", seconds);
+                break;
+            }
 
-		// Print RMS every so often (optional)
+            if (have_ps) {
+                // this uses global PSfile inside PSpkg.c
+                plotfourier(i, seconds, avgvol,
+                            pfourier, pfourierror,
+                            mintone, ntones);
+            }
+        }
+
+        // optional monitoring
         if (i % 1000 == 0) {
             double vr = sqrt(vrms / i);
             fprintf(stderr, "vrms = %.0f\n", vr);
         }
     }
 
-    // Final RMS printout
+    // final RMS
     if (i > 0) {
         double vr = sqrt(vrms / i);
         fprintf(stderr, "Final vrms = %.0f (samples: %d)\n", vr, i);
     }
-    
-    PSclose();  // close PostScript file
 
+    // close PS if we opened it
+    if (have_ps) {
+        PSclose();
+    }
 
+    fclose(inwav);
     return 0;
 }

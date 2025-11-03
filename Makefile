@@ -1,6 +1,6 @@
 #===============================================================
 # Makefile for MyTunesNew
-# Builds MTconvert from MTconvert.c, MTpkg.c, and PSpkg.c
+# Builds both MTconvert and MTgraph from shared sources
 #===============================================================
 
 # --- Compiler and flags ---
@@ -8,17 +8,30 @@ CC      := clang
 CFLAGS  := -O2 -std=c99 -Wall -Wextra -pedantic
 LDFLAGS := -lm
 
-# --- Source files and targets ---
-SRC     := MTconvert.c MTpkg.c PSpkg.c
-OBJ     := $(SRC:.c=.o)
-TARGET  := MTconvert
+# --- Shared source files ---
+COMMON_SRC := MTpkg.c PSpkg.c
+COMMON_OBJ := $(COMMON_SRC:.c=.o)
+
+# --- Program-specific sources ---
+CONVERT_SRC := MTconvert.c
+CONVERT_OBJ := $(CONVERT_SRC:.c=.o) $(COMMON_OBJ)
+CONVERT_BIN := MTconvert
+
+GRAPH_SRC   := MTgraph.c
+GRAPH_OBJ   := $(GRAPH_SRC:.c=.o) $(COMMON_OBJ)
+GRAPH_BIN   := MTgraph
 
 # --- Default target ---
-all: $(TARGET)
+all: $(CONVERT_BIN) $(GRAPH_BIN)
 
-# --- Link the final executable ---
-$(TARGET): $(OBJ)
-	@echo "Linking $(TARGET)..."
+# --- Link MTconvert ---
+$(CONVERT_BIN): $(CONVERT_OBJ)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+# --- Link MTgraph ---
+$(GRAPH_BIN): $(GRAPH_OBJ)
+	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # --- Compile each .c into .o ---
@@ -29,7 +42,7 @@ $(TARGET): $(OBJ)
 # --- Clean up build artifacts ---
 clean:
 	@echo "Cleaning up..."
-	rm -f $(OBJ) $(TARGET)
+	rm -f *.o $(CONVERT_BIN) $(GRAPH_BIN)
 
 # --- Force rebuild ---
 rebuild: clean all

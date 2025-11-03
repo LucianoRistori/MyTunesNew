@@ -1,23 +1,13 @@
 
-//===============================================================
-// File: PSpkg.c
-// Purpose: PostScript utilities for MTconvert / MTpkg
-//===============================================================
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <string.h>
-#include "PSpkg.h"
 
-//---------------------------------------------------------------
-// Global PostScript file pointer
-//---------------------------------------------------------------
-FILE *PSfile = NULL;   // lazily initialized at runtime
 
-//---------------------------------------------------------------
-// Initialize PostScript output
-//---------------------------------------------------------------
+/* file for all .ps output */
+FILE * PSfile = NULL;
+
+/* Optional wrappers for backward compatibility */
 void PSopen(const char *filename)
 {
     PSfile = fopen(filename, "w");
@@ -25,142 +15,230 @@ void PSopen(const char *filename)
         fprintf(stderr, "Error: cannot open %s for PostScript output\n", filename);
         exit(1);
     }
-
     fprintf(PSfile, "%%!PS-Adobe-3.0\n");
-    fprintf(PSfile, "%%%%BoundingBox: 0 0 600 800\n");
-    fprintf(PSfile, "/Times-Roman findfont 10 scalefont setfont\n");
+    fprintf(PSfile, "%%%%BoundingBox: 0 0 800 600\n");
 }
 
-//---------------------------------------------------------------
-// Close PostScript output
-//---------------------------------------------------------------
 void PSclose(void)
 {
-    if (!PSfile) PSfile = stdout;
+    if (!PSfile) return;
     fprintf(PSfile, "showpage\n");
-    if (PSfile != stdout)
-        fclose(PSfile);
+    fclose(PSfile);
     PSfile = NULL;
 }
 
-//---------------------------------------------------------------
-// Write simple text at position (x, y)
-//---------------------------------------------------------------
-void PStext(double x, double y, const char *text)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.2f %.2f moveto (%s) show\n", x, y, text);
+
+
+
+/* BASIC FUNCTIONS */ 
+
+
+void PSnewpath(){
+fprintf(PSfile,"newpath\n");
+}
+void PSrmoveto(float x, float y){
+fprintf(PSfile,"%10.3f %10.3f rmoveto\n",x,y);
+}
+void PSmoveto(float x, float y){
+fprintf(PSfile,"%10.3f %10.3f moveto\n",x,y);
+}
+void PSrlineto(float x, float y){
+fprintf(PSfile,"%10.3f %10.3f rlineto\n",x,y);
+}
+void PSlineto(float x, float y){
+fprintf(PSfile,"%10.3f %10.3f lineto\n",x,y);
+}
+void PSclosepath(){
+fprintf(PSfile,"closepath\n");
+}
+void PSsetlinewidth(float width){
+fprintf(PSfile,"%10.3f setlinewidth\n",width);
+}
+void PSsetdash(float n1, float n2, float n3, float n4){
+fprintf(PSfile,"[%10.3f %10.3f %10.3f %10.3f] 0 setdash\n",n1,n2,n3,n4);
+}
+void PSstroke(){
+fprintf(PSfile,"stroke\n");
+}
+void PSgsave(){
+fprintf(PSfile,"gsave\n");
+}
+void PSgrestore(){
+fprintf(PSfile,"grestore\n");
+}
+void PSsetgrey(float level){
+fprintf(PSfile,"%10.3f setgrey\n",level);
+}
+void PSsetrgbcolor(float r, float g, float b){
+fprintf(PSfile,"%10.3f %10.3f %10.3f setrgbcolor\n",r,g,b);
+}
+void PSfill(){
+fprintf(PSfile,"fill\n");
+}
+void PSarc(float x, float y, float r, float a1, float a2){
+fprintf(PSfile,"%10.3f %10.3f %10.3f %10.3f %10.3f arc\n",x,y,r,a1,a2);
+}
+void PSarcn(float x, float y, float r, float a1, float a2){
+fprintf(PSfile,"%10.3f %10.3f %10.3f %10.3f %10.3f arcn\n",x,y,r,a1,a2);
+}
+void PSsetfont(char* fontname, float fontsize){
+fprintf(PSfile,"/%s findfont\n",fontname);
+fprintf(PSfile,"%10.3f scalefont setfont\n",fontsize);
+}
+void PSshow(char* text){
+fprintf(PSfile,"(%s) show\n",text);
+}
+void PSshowleft(char* text){
+fprintf(PSfile,"(%s) show\n",text);
+}
+void PSshowright(char* text){
+fprintf(PSfile,"(%s) dup stringwidth pop -1 div 0 rmoveto show\n",text);
+}
+void PSshowcenter(char* text){
+fprintf(PSfile,"(%s) dup stringwidth pop -2 div 0 rmoveto show\n",text);
+}
+void PSshowpage(){
+fprintf(PSfile,"showpage\n");
+}
+void PStranslate(float x, float y){
+fprintf(PSfile,"%10.3f %10.3f translate\n",x,y);
+}
+void PSrotate(float degrees){
+fprintf(PSfile,"%10.3f rotate\n",degrees);
 }
 
-//---------------------------------------------------------------
-// Set gray level (0=black, 1=white)
-//---------------------------------------------------------------
-void PSgray(double g)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.3f setgray\n", g);
+/* END OF BASIC FUNCTIONS */
+
+
+/* HIGHER LEVEL FUNCTIONS */
+/* Al these functions generate PS output through calls to
+   basic functions ONLY */
+
+/* define standard colors for six barrels */
+
+#define COL0 {0.,0.,0.}
+#define COL1 {1.,0.,0.}
+#define COL2 {0.,.5,0.}
+#define COL3 {0.,0.,1.}
+#define COL4 {0.,.7,.7}
+#define COL5 {.5,0.,.5}
+
+
+/* Draws the border of a rectangle */
+
+void PSrectangleBorder(float xLowerLeft, float yLowerLeft,
+                 float xUpperRight, float yUpperRight,
+                 float lineWidth,
+                 float lineRed, float lineGreen, float lineBlue){
+  PSgsave();
+
+  PSnewpath();
+  PSsetlinewidth(lineWidth);
+  PSmoveto(xLowerLeft, yLowerLeft);
+  PSlineto(xUpperRight,yLowerLeft);
+  PSlineto(xUpperRight,yUpperRight);
+  PSlineto(xLowerLeft,yUpperRight);
+  PSclosepath();
+  PSsetrgbcolor(lineRed, lineGreen, lineBlue);
+  PSstroke();
+
+  PSgrestore();
 }
 
-//---------------------------------------------------------------
-// Set line width
-//---------------------------------------------------------------
-void PSlinewidth(double w)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.3f setlinewidth\n", w);
+/* Draws a color filled rectangle (no border) */
+
+void PSrectangleFill(float xLowerLeft, float yLowerLeft,
+                 float xUpperRight, float yUpperRight,
+                 float fillRed, float fillGreen, float fillBlue){
+  PSgsave();
+
+  PSnewpath();
+  PSmoveto(xLowerLeft, yLowerLeft);
+  PSlineto(xUpperRight,yLowerLeft);
+  PSlineto(xUpperRight,yUpperRight);
+  PSlineto(xLowerLeft,yUpperRight);
+  PSclosepath();
+  PSsetrgbcolor(fillRed, fillGreen, fillBlue);
+  PSfill();
+
+  PSgrestore();
 }
 
-//---------------------------------------------------------------
-// Draw a colored line with given width
-//---------------------------------------------------------------
-void PSline(double x1, double y1, double x2, double y2,
-            double width, double r, double g, double b)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.3f setlinewidth\n", width);
-    fprintf(PSfile, "%.3f %.3f %.3f setrgbcolor\n", r, g, b);
-    fprintf(PSfile, "%.2f %.2f moveto %.2f %.2f lineto stroke\n",
-            x1, y1, x2, y2);
-    fprintf(PSfile, "0 0 0 setrgbcolor\n");
+/* Draws a color filled circle (no border) */
+
+void PScircleFill(float xCenter, float yCenter, float radius,
+                  float fillRed, float fillGreen, float fillBlue){
+  PSgsave();
+
+  PSnewpath();
+  PSarc(xCenter, yCenter, radius,0.,360.);
+  PSsetrgbcolor(fillRed, fillGreen, fillBlue);
+  PSfill();
+
+  PSgrestore();
 }
 
-//---------------------------------------------------------------
-// Draw a filled rectangle with RGB color
-//---------------------------------------------------------------
-void PSrectangleFill(double x1, double y1, double x2, double y2,
-                     double r, double g, double b)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "newpath %.2f %.2f moveto ", x1, y1);
-    fprintf(PSfile, "%.2f %.2f lineto ", x2, y1);
-    fprintf(PSfile, "%.2f %.2f lineto ", x2, y2);
-    fprintf(PSfile, "%.2f %.2f lineto closepath\n", x1, y2);
-    fprintf(PSfile, "%.3f %.3f %.3f setrgbcolor fill\n", r, g, b);
-    fprintf(PSfile, "0 0 0 setrgbcolor\n");
+/* Draws the border of a circle */
+
+void PScircleBorder(float xCenter, float yCenter, float radius,
+                    float lineWidth,
+		    float lineRed, float lineGreen, float lineBlue){
+  PSgsave();
+
+  PSnewpath();
+  PSsetlinewidth(lineWidth);
+  PSarc(xCenter, yCenter, radius,0.,360.);
+  PSsetrgbcolor(lineRed, lineGreen, lineBlue);
+  PSstroke();
+
+  PSgrestore();
 }
 
-//---------------------------------------------------------------
-// Set font and size
-//---------------------------------------------------------------
-void PSsetfont(const char *fontname, double size)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "/%s findfont %.2f scalefont setfont\n", fontname, size);
+/* Draws a line of specified width and color */
+
+void PSline(float xLowerLeft, float yLowerLeft,
+	    float xUpperRight, float yUpperRight,
+	    float lineWidth,
+	    float lineRed, float lineGreen, float lineBlue){
+  PSgsave();
+
+  PSnewpath();
+  PSsetlinewidth(lineWidth);
+  PSmoveto(xLowerLeft, yLowerLeft);
+  PSlineto(xUpperRight,yUpperRight);
+  PSsetrgbcolor(lineRed, lineGreen, lineBlue);
+  PSstroke();
+
+  PSgrestore();
 }
 
-//---------------------------------------------------------------
-// Move current point
-//---------------------------------------------------------------
-void PSmoveto(double x, double y)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.2f %.2f moveto\n", x, y);
-}
+// Paints a grey image from a bitmap (one byte per pixel)
 
-//---------------------------------------------------------------
-// Show left-justified text
-//---------------------------------------------------------------
-void PSshowleft(const char *text)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "(%s) show\n", text);
-}
+void PSimage(float xlowleft, float ylowleft, float xlen, float ylen, int nx, int ny, char *picture){
 
-//---------------------------------------------------------------
-// Show right-justified text
-//---------------------------------------------------------------
-void PSshowright(const char *text)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "(%s) dup stringwidth pop neg 0 rmoveto show\n", text);
-}
+  int ind,j;
 
-//---------------------------------------------------------------
-// Draw circle outline
-//---------------------------------------------------------------
-void PScircle(double x, double y, double r)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "newpath %.2f %.2f %.2f 0 360 arc stroke\n", x, y, r);
-}
+  PSgsave();
 
-//---------------------------------------------------------------
-// Draw filled circle
-//---------------------------------------------------------------
-void PScircleFill(double x, double y, double r,
-                  double rcol, double gcol, double bcol)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "%.3f %.3f %.3f setrgbcolor\n", rcol, gcol, bcol);
-    fprintf(PSfile, "newpath %.2f %.2f %.2f 0 360 arc fill\n", x, y, r);
-    fprintf(PSfile, "0 0 0 setrgbcolor\n");
-}
+  fprintf(PSfile,"/picstr 256 string def\n");
+  fprintf(PSfile,"%.0f %.0f translate\n", xlowleft, ylowleft);
+  fprintf(PSfile,"%.0f %.0f scale\n", xlen, ylen);
 
-//---------------------------------------------------------------
-// Issue PostScript "showpage" command
-//---------------------------------------------------------------
-void PSshowpage(void)
-{
-    if (!PSfile) PSfile = stdout;
-    fprintf(PSfile, "showpage\n");
+  fprintf(PSfile,"%d %d 8\n", nx, ny);
+  fprintf(PSfile,"{%d 0 0 %d 0 0}\n", nx, ny);
+  fprintf(PSfile,"{currentfile picstr readhexstring pop} image\n");
+
+  for (ind=0;ind< nx*ny;){
+    for(j=0;j<256;++j){
+      if(ind < nx*ny)
+	fprintf(PSfile," %02X",(*(picture+ind))&0xFF);
+      else
+	fprintf(PSfile," 00");
+      if(ind%16 == 15) printf("\n");
+      ++ind;
+    }
+  }
+  fprintf(PSfile,"\n\n");
+
+  PSgrestore();
 }

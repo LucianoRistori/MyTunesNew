@@ -8,6 +8,18 @@
 
 #include <stdio.h>
 
+//===============================================================
+// Compile-time constants for Fourier analysis
+//===============================================================
+// lowest frequency of spectrum
+#define MINFREQ (27.5)
+// corresponding "note" (0.=C, 1.=C#, 2.=D, 3.=D# ...)
+#define MINNOTE (9.) // it's an A
+// number of frequencies in spectrum
+#define NFREQS (288)
+// number of frequency steps in one semitone
+#define TONESTEPS (3)
+
 // --- byte-swapping helpers ---
 int flip4bytes(int input);
 short flip2bytes(short input);
@@ -15,6 +27,9 @@ short flip2bytes(short input);
 // --- main data-handling routines ---
 int getsample(int *sample, FILE *infile);
 int autofourier(int sample, int opt, double **pfourier, double **pfourierror);
+int readfourier(int *isample, double *seconds, double *avgvol,
+                double *fourier, double *fourierror);
+
 double volume(int sample);
 int writefourier(int i, double seconds, double avgvol,
                  double *pfourier, double *pfourierror);

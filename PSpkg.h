@@ -1,37 +1,67 @@
-//===============================================================
-// File: PSpkg.h
-// Purpose: PostScript utilities — header file
-//===============================================================
-
 #ifndef PSPKG_H
 #define PSPKG_H
 
 #include <stdio.h>
 
-//---------------------------------------------------------------
-// Global PostScript file handle (declared in PSpkg.c)
-//---------------------------------------------------------------
+/* Global PostScript output file */
 extern FILE *PSfile;
 
-//---------------------------------------------------------------
-// Function prototypes
-//---------------------------------------------------------------
+/* File management */
 void PSopen(const char *filename);
 void PSclose(void);
-void PStext(double x, double y, const char *text);
-void PSgray(double g);
-void PSlinewidth(double w);
-void PSline(double x1, double y1, double x2, double y2,
-            double width, double r, double g, double b);
-void PSrectangleFill(double x1, double y1, double x2, double y2,
-                     double r, double g, double b);
-void PSsetfont(const char *fontname, double size);
-void PSmoveto(double x, double y);
-void PSshowleft(const char *text);
-void PSshowright(const char *text);
-void PScircle(double x, double y, double r);
-void PScircleFill(double x, double y, double r,
-                  double rcol, double gcol, double bcol);
-void PSshowpage(void);
 
-#endif // PSPKG_H
+
+/* Basic PostScript primitives */
+void PSnewpath(void);
+void PSrmoveto(float x, float y);
+void PSmoveto(float x, float y);
+void PSrlineto(float x, float y);
+void PSlineto(float x, float y);
+void PSclosepath(void);
+void PSsetlinewidth(float width);
+void PSsetdash(float n1, float n2, float n3, float n4);
+void PSstroke(void);
+void PSgsave(void);
+void PSgrestore(void);
+void PSsetgrey(float level);
+void PSsetrgbcolor(float r, float g, float b);
+void PSfill(void);
+void PSarc(float x, float y, float r, float a1, float a2);
+void PSarcn(float x, float y, float r, float a1, float a2);
+void PSsetfont(char *fontname, float fontsize);
+void PSshow(char *text);
+void PSshowleft(char *text);
+void PSshowright(char *text);
+void PSshowcenter(char *text);
+void PSshowpage(void);
+void PStranslate(float x, float y);
+void PSrotate(float degrees);
+
+/* Higher-level drawing functions */
+void PSrectangleBorder(float xLowerLeft, float yLowerLeft,
+                       float xUpperRight, float yUpperRight,
+                       float lineWidth,
+                       float lineRed, float lineGreen, float lineBlue);
+
+void PSrectangleFill(float xLowerLeft, float yLowerLeft,
+                     float xUpperRight, float yUpperRight,
+                     float fillRed, float fillGreen, float fillBlue);
+
+void PScircleFill(float xCenter, float yCenter, float radius,
+                  float fillRed, float fillGreen, float fillBlue);
+
+void PScircleBorder(float xCenter, float yCenter, float radius,
+                    float lineWidth,
+                    float lineRed, float lineGreen, float lineBlue);
+
+void PSline(float xLowerLeft, float yLowerLeft,
+            float xUpperRight, float yUpperRight,
+            float lineWidth,
+            float lineRed, float lineGreen, float lineBlue);
+
+/* Image drawing (grayscale) */
+void PSimage(float xlowleft, float ylowleft,
+             float xlen, float ylen,
+             int nx, int ny, char *picture);
+
+#endif /* PSPKG_H */
