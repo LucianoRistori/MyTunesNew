@@ -1,0 +1,28 @@
+# macOS metadata
+.DS_Store
+
+# Object and executable files
+*.o
+MTconvert
+MTgraph
+
+# Logs and temporary files
+*.log
+
+# Generated spectra and analysis data
+spectrum.*
+spectrogram.*
+*.dat
+*.raw
+*.fourier
+*.pdf
+*.ps
+pipe.log
+run.log
+run_ps.log
+
+# Test script artifacts
+MTtest.sh~
+
+# Backup files
+*~
