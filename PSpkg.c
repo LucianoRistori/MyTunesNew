@@ -15,6 +15,7 @@ void PSopen(const char *filename)
         fprintf(stderr, "Error: cannot open %s for PostScript output\n", filename);
         exit(1);
     }
+    setvbuf(PSfile, NULL, _IONBF, 0); //unbuffered output
     fprintf(PSfile, "%%!PS-Adobe-3.0\n");
     fprintf(PSfile, "%%%%BoundingBox: 0 0 800 600\n");
 }

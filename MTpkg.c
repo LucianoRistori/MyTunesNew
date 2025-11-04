@@ -487,34 +487,78 @@ int writefourier(int isample, double seconds, double avgvol,
     return 0;
 }
 
+// helper function
+
+void writefourier_to_file(FILE *f, int i, double seconds, double avgvol,
+                          double *pfourier, double *pfourierror)
+{
+    FILE *old = stdout;
+    stdout = f;
+    writefourier(i, seconds, avgvol, pfourier, pfourierror);
+    fflush(f);
+    stdout = old;
+}
 
 
 
 // read text header lines (for text-based spectrum.txt)
-int checkheader() {
-    char line[256];
-    int version = 0, nfreqs = 0, tonesteps = 0;
-    double minfreq = 0.0, minnote = 0.0;
 
-    // read header lines beginning with '#'
-    while (fgets(line, sizeof(line), stdin)) {
-        if (line[0] != '#') break; // stop when data begins
-        sscanf(line, "# version %d", &version);
-        sscanf(line, "# minfreq %lf", &minfreq);
-        sscanf(line, "# minnote %lf", &minnote);
-        sscanf(line, "# nfreqs %d", &nfreqs);
-        sscanf(line, "# tonesteps %d", &tonesteps);
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+int checkheader(FILE *f)
+{
+    char line[256];
+    double val;
+    int nfreqs = 0;
+    int found_version = 0, found_freq = 0, found_note = 0, found_steps = 0;
+
+    fprintf(stderr, "Reading header:\n");
+
+    while (fgets(line, sizeof(line), f)) {
+        // Skip leading spaces
+        char *p = line;
+        while (isspace((unsigned char)*p)) p++;
+
+        // Skip comment marker #
+        if (*p == '#') p++;
+
+        // Skip spaces again after #
+        while (isspace((unsigned char)*p)) p++;
+
+        // Stop if line looks like data (starts with digit)
+        if (isdigit((unsigned char)*p) || *p == '\0')
+            break;
+
+        if (sscanf(p, "version %lf", &val) == 1) {
+            fprintf(stderr, "  version = %.0f\n", val);
+            found_version = 1;
+        } else if (sscanf(p, "minfreq %lf", &val) == 1) {
+            fprintf(stderr, "  minfreq = %.3f\n", val);
+            found_freq = 1;
+        } else if (sscanf(p, "minnote %lf", &val) == 1) {
+            fprintf(stderr, "  minnote = %.3f\n", val);
+            found_note = 1;
+        } else if (sscanf(p, "nfreqs %d", &nfreqs) == 1) {
+            fprintf(stderr, "  nfreqs = %d\n", nfreqs);
+        } else if (sscanf(p, "tonesteps %lf", &val) == 1) {
+            fprintf(stderr, "  tonesteps = %.0f\n", val);
+            found_steps = 1;
+            break;  // header done
+        }
     }
 
-    fprintf(stderr, "version %d\n minfreq %.2f\n minnote %.2f\n nfreqs %d\n tonesteps %d\n",
-            version, minfreq, minnote, nfreqs, tonesteps);
-
-    // loose validation
-    if (version != 1) fprintf(stderr, "Warning: unexpected version %d\n", version);
-    if (nfreqs != NFREQS) fprintf(stderr, "Warning: file nfreqs=%d != code NFREQS=%d\n", nfreqs, NFREQS);
-
-    return 0; // success
+    if (found_version && found_freq && found_note && found_steps) {
+        fprintf(stderr, "Header OK.\n");
+        return 0;
+    } else {
+        fprintf(stderr, "Header incomplete or malformed.\n");
+        return 1;
+    }
 }
+
+
 
 //============================================================
 // readfourier()
@@ -530,69 +574,34 @@ int checkheader() {
 //   <NFREQS Fourier error values, 10 per line>
 //============================================================
 
-int readfourier(int *isample, double *seconds, double *avgvol,
-                double *fourier, double *fourierror)
+int readfourier(FILE *f, int *sample, double *seconds, double *avgvol,
+                double *pfourier, double *pfourierror)
 {
-    char line[4096];
-    int count;
-            //fprintf(stderr, "DEBUG: readfourier called\n");
-
-    // Skip comment lines until we find the header line
-    for(;;){
-        if (!fgets(line, sizeof(line), stdin)) return 0;  // EOF
-            //fprintf(stderr, "DEBUG1: line read %s\n", line);
-     if (line[0] != '#') break;
-	}
-    // Parse the three header numbers
-    if (sscanf(line, "%d %lf %lf", isample, seconds, avgvol) != 3) {
-        fprintf(stderr, "Error: bad header line: %s\n", line);
-        return -1;
+    // Read sample index, time (s), and average volume
+    if (fscanf(f, "%d %lf %lf", sample, seconds, avgvol) != 3) {
+        if (feof(f)) return 0;  // normal EOF
+        return -1;              // read error
     }
-     
-//fprintf(stderr, "DEBUG read %d %lf %lf \n\n", *isample, *seconds, *avgvol);
 
-    // ---- Read NFREQS Fourier values ----
-    count = 0;
-    while (count < NFREQS && fgets(line, sizeof(line), stdin)) {
-           // fprintf(stderr, "DEBUG2: line read %s\n", line);
-        if (line[0] == '#' || strlen(line) < 2) continue;
-        char *p = line;
-        while (*p && count < NFREQS) {
-            double val;
-            int n;
-            if (sscanf(p, "%lf%n", &val, &n) == 1) {
-                fourier[count++] = val;
-                p += n;
-            } else break;
+    // Read the Fourier amplitudes
+    for (int i = 0; i < NFREQS; ++i) {
+        if (fscanf(f, "%lf", &pfourier[i]) != 1) {
+            if (feof(f)) return 0;
+            return -1;
         }
     }
-    if (count != NFREQS) {
-        fprintf(stderr, "Error: read %d of %d Fourier values\n", count, NFREQS);
-        return -1;
-    }
 
-    // ---- Read NFREQS Fourier error values ----
-    count = 0;
-    while (count < NFREQS && fgets(line, sizeof(line), stdin)) {
-            //fprintf(stderr, "DEBUG3: line read %s\n", line);
-        if (line[0] == '#' || strlen(line) < 2) continue;
-        char *p = line;
-        while (*p && count < NFREQS) {
-            double val;
-            int n;
-            if (sscanf(p, "%lf%n", &val, &n) == 1) {
-                fourierror[count++] = val;
-                p += n;
-            } else break;
+    // Read the Fourier errors
+    for (int i = 0; i < NFREQS; ++i) {
+        if (fscanf(f, "%lf", &pfourierror[i]) != 1) {
+            if (feof(f)) return 0;
+            return -1;
         }
-    }
-    if (count != NFREQS) {
-        fprintf(stderr, "Error: read %d of %d Fourier error values\n", count, NFREQS);
-        return -1;
     }
 
     return 1;  // success
 }
+
 
        
 

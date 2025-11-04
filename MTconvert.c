@@ -3,23 +3,11 @@
 // Purpose: Main converter / analyzer for MyTunesNew
 //
 // Usage:
-//   MTconvert input.wav
-//       -> reads input.wav, writes spectrum text to stdout, no PS
+//   MTconvert t1 t2 input.wav spectrum.txt [--ps spectrum.ps]
 //
-//   MTconvert input.wav spectrum.txt
-//       -> reads input.wav, writes spectrum text to spectrum.txt, no PS
-//
-//   MTconvert input.wav spectrum.txt spectrum.ps
-//       -> reads input.wav, writes spectrum text to spectrum.txt,
-//          AND writes per-frame PS plots to spectrum.ps
-//
-//   (you can also do)
-//   MTconvert input.wav - spectrum.ps
-//       -> spectrum to stdout, PS to spectrum.ps
-//
-// Notes:
-//   - actual spectrum writing is still done by writefourier(...) in MTpkg.c
-//   - actual plotting is still done by plotfourier(...) in MTpkg.c
+// Examples:
+//   MTconvert 0 30 test.wav spectrum.txt
+//   MTconvert 10 20 song.wav out.txt --ps out.ps
 //===============================================================
 
 #include <stdio.h>
@@ -31,123 +19,109 @@
 
 int main(int argc, char *argv[])
 {
-    FILE *inwav = stdin;
-    const char *spectrum_out = NULL;
-    const char *ps_out = NULL;
-    int have_ps = 0;
-
-    // ------------------------------------------------------------
-    // Parse command line
-    // ------------------------------------------------------------
-    // argv[1] = input wav
-    // argv[2] = spectrum text file (or "-" for stdout)
-    // argv[3] = PS output file
-    if (argc < 2) {
+    if (argc < 5) {
         fprintf(stderr,
-                "Usage: %s input.wav [spectrum.txt|-] [spectrum.ps]\n",
-                argv[0]);
+            "Usage: %s t1 t2 input.wav spectrum.txt [--ps spectrum.ps]\n",
+            argv[0]);
         return 1;
     }
 
-    // open input wav
-    inwav = fopen(argv[1], "rb");
-    if (!inwav) {
-        perror("Cannot open input wav");
-        return 1;
-    }
+    //------------------------------------------------------------
+    // Parse required arguments
+    //------------------------------------------------------------
+    double t1 = atof(argv[1]);
+    double t2 = atof(argv[2]);
+    const char *wavfile = argv[3];
+    const char *spectrumfile = argv[4];
 
-    // spectrum destination
-    if (argc >= 3) {
-        spectrum_out = argv[2];
-        if (strcmp(spectrum_out, "-") != 0) {
-            // redirect stdout to spectrum file
-            if (!freopen(spectrum_out, "w", stdout)) {
-                perror("Cannot open spectrum output file");
-                fclose(inwav);
-                return 1;
-            }
-        }
-        // else: leave stdout as is
-    }
+    //------------------------------------------------------------
+    // Optional --ps argument
+    //------------------------------------------------------------
+    int have_ps = 0;
+    const char *psfile = NULL;
 
-    // PS destination (optional)
-    if (argc >= 4) {
-        ps_out = argv[3];
-        PSopen(ps_out);
+    if (argc >= 7 && strcmp(argv[5], "--ps") == 0) {
+        psfile = argv[6];
         have_ps = 1;
-    } else {
-        have_ps = 0; // no PS output
     }
 
-    // ------------------------------------------------------------
-    // Processing loop (mostly your original code)
-    // ------------------------------------------------------------
-    int i = 0;
-    int retcode;
-    int sample;
-    double vrms = 0.0;
-    double seconds = 0.0;
-    double avgvol = 0.0;
-    double *pfourier = NULL;
-    double *pfourierror = NULL;
+    //------------------------------------------------------------
+    // Open input and output files
+    //------------------------------------------------------------
+    FILE *inwav = fopen(wavfile, "rb");
+    if (!inwav) {
+        perror("Cannot open input WAV file");
+        return 1;
+    }
 
-    const int writeEvery = 441;   // every 441 samples (~0.01s @ 44.1kHz)
-    const int mintone    = 0;
-    const int ntones     = NFREQS;
+    FILE *fspectrum = fopen(spectrumfile, "w");
+    if (!fspectrum) {
+        perror("Cannot open spectrum output file");
+        fclose(inwav);
+        return 1;
+    }
+
+    if (have_ps) {
+        PSopen(psfile);
+        fprintf(stderr, "PostScript output: %s\n", psfile);
+    }
+
+    //------------------------------------------------------------
+    // Processing parameters
+    //------------------------------------------------------------
+    const double sampleRate = 44100.0;
+    int startSample = (int)(t1 * sampleRate);
+    int endSample   = (t2 > 0) ? (int)(t2 * sampleRate) : -1;
+
+    fprintf(stderr, "Processing range: %.3f to %.3f s\n", t1, t2);
+
+    //------------------------------------------------------------
+    // Main processing loop
+    //------------------------------------------------------------
+    int i = 0, retcode, sample;
+    double vrms = 0.0, seconds = 0.0, avgvol = 0.0;
+    double *pfourier = NULL, *pfourierror = NULL;
+    const int writeEvery = 441, mintone = 0, ntones = NFREQS;
 
     while ((retcode = getsample(&sample, inwav)) == 0) {
-
-        // accumulate RMS
-        vrms += (double)(sample * sample);
         ++i;
+        if (i < startSample) continue;
+        if (endSample > 0 && i > endSample) break;
 
-        // feed analyzer
+        vrms += (double)(sample * sample);
+
         retcode = autofourier(sample, 0, &pfourier, &pfourierror);
         if (retcode != 0) {
             fprintf(stderr, "autofourier failed at sample %d\n", i);
             break;
         }
 
-        // running volume
         avgvol = volume(sample);
+        seconds = (double)i / sampleRate;
 
-        // time in seconds
-        seconds = (double)i / 44100.0;
-
-        // every N samples, dump a frame (text) and optionally make a PS page
         if (i % writeEvery == 0) {
-            retcode = writefourier(i, seconds, avgvol, pfourier, pfourierror);
-            if (retcode != 0) {
-                fprintf(stderr, "writefourier failed at %.3f s\n", seconds);
-                break;
-            }
-
+            writefourier_to_file(fspectrum, i, seconds, avgvol,
+                                 pfourier, pfourierror);
             if (have_ps) {
-                // this uses global PSfile inside PSpkg.c
                 plotfourier(i, seconds, avgvol,
                             pfourier, pfourierror,
                             mintone, ntones);
             }
         }
 
-        // optional monitoring
-        if (i % 1000 == 0) {
-            double vr = sqrt(vrms / i);
-            fprintf(stderr, "vrms = %.0f\n", vr);
-        }
+        if (i % 1000 == 0)
+            fprintf(stderr, "vrms = %.0f\n", sqrt(vrms / (i - startSample + 1)));
     }
 
-    // final RMS
-    if (i > 0) {
-        double vr = sqrt(vrms / i);
-        fprintf(stderr, "Final vrms = %.0f (samples: %d)\n", vr, i);
-    }
+    //------------------------------------------------------------
+    // Final report and cleanup
+    //------------------------------------------------------------
+    fprintf(stderr, "Final vrms = %.0f (samples: %d)\n",
+            sqrt(vrms / (i - startSample + 1)), i - startSample + 1);
 
-    // close PS if we opened it
-    if (have_ps) {
-        PSclose();
-    }
-
+    if (have_ps) PSclose();
+    fclose(fspectrum);
     fclose(inwav);
+    fprintf(stderr, "Done.\n");
     return 0;
 }

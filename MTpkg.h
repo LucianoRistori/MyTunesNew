@@ -27,18 +27,22 @@ short flip2bytes(short input);
 // --- main data-handling routines ---
 int getsample(int *sample, FILE *infile);
 int autofourier(int sample, int opt, double **pfourier, double **pfourierror);
-int readfourier(int *isample, double *seconds, double *avgvol,
-                double *fourier, double *fourierror);
+
+int readfourier(FILE *f, int *sample, double *seconds, double *avgvol,
+                double *pfourier, double *pfourierror);
+
 
 double volume(int sample);
 int writefourier(int i, double seconds, double avgvol,
                  double *pfourier, double *pfourierror);
                  
+void writefourier_to_file(FILE *f, int i, double seconds, double avgvol,
+                          double *pfourier, double *pfourierror);
+                 
 void plotfourier(int isample, double seconds, double avgvol,
                  double *fourier, double *fourierror,
                  int mintone, int ntones);
 
-// --- optional ---
-int checkheader(FILE *fp);
+int checkheader(FILE *f);
 
 #endif // MTPKG_H
