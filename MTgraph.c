@@ -51,6 +51,8 @@ int main(int argc, char *argv[])
         perror("Cannot open spectrum input file");
         return 1;
     }
+    
+//fprintf(stderr, "DEBUG: before\n");////////////////////////////////////
 
     PSopen(psfile);
     fprintf(stderr, "Input: %s\nOutput: %s\n", spectrumfile, psfile);
@@ -84,6 +86,8 @@ int main(int argc, char *argv[])
     double dblimg[MAXSHOTS][NTONES];
     char img[MAXSHOTS * NTONES];
     int icolor;
+    
+    
 
     //------------------------------------------------------------
     // Read header
@@ -103,6 +107,7 @@ int main(int argc, char *argv[])
     // Page loop
     //------------------------------------------------------------
     for (ipage = 0; seconds < STARTSECONDS + NSECONDS; ++ipage) {
+    
 
         // Snapshot loop for each page
         for (ishot = 0; seconds - lastpagesecs < SECSPERPAGE; ++ishot) {
@@ -118,6 +123,7 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Read error at record %d\n", irecord);
                 break;
             }
+        
 
             if (seconds <= STARTSECONDS)
                 continue; // wait for cue point
@@ -148,10 +154,12 @@ int main(int argc, char *argv[])
             ++nshots;
             if (seconds >= STARTSECONDS + NSECONDS)
                 break;
+
         } // end snapshot loop
 
         if (nshots == 0)
             break;
+            
 
         //--------------------------------------------------------
         // Normalize image and draw
@@ -172,17 +180,22 @@ int main(int argc, char *argv[])
         //PSrotate(-90.);
 
         fprintf(stderr, "Image: nshots=%d, NTONES=%d\n", nshots, NTONES);
+        
 
         PSrectangleFill(0., 0., 800., 620., 0., 0., 0.);
+
         PSimage(OFFX, OFFY,
                 SIDEX * (seconds - lastpagesecs) / SECSPERPAGE,
                 SIDEY,
                 nshots, NTONES, &img[0]);
+
         PSrectangleBorder(OFFX, OFFY,
                           OFFX + SIDEX * (seconds - lastpagesecs) / SECSPERPAGE,
                           OFFY + SIDEY,
                           1., 1., 1., 1.);
 
+
+        
         // One-second lines and labels
         PSsetfont("Times-Roman", 12.);
         PSsetrgbcolor(1., 1., 1.);
@@ -221,6 +234,7 @@ int main(int argc, char *argv[])
                        col[icolor][0], col[icolor][1], col[icolor][2]);
             }
         }
+//fprintf(stderr, "DEBUG: end\n");///////////////////////////////////////////////
 
         PSshowpage();
 
@@ -237,6 +251,9 @@ int main(int argc, char *argv[])
     PSclose();
     //stdin = old_stdin;
     fclose(in);
+
+//fprintf(stderr, "DEBUG: end\n");///////////////////////////////////////////////
+
     fprintf(stderr, "Done.\n");
     return 0;
 }

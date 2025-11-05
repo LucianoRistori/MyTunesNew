@@ -216,7 +216,6 @@ void PSline(float xLowerLeft, float yLowerLeft,
 // Paints a grey image from a bitmap (one byte per pixel)
 
 void PSimage(float xlowleft, float ylowleft, float xlen, float ylen, int nx, int ny, char *picture){
-
   int ind,j;
 
   PSgsave();
@@ -228,6 +227,8 @@ void PSimage(float xlowleft, float ylowleft, float xlen, float ylen, int nx, int
   fprintf(PSfile,"%d %d 8\n", nx, ny);
   fprintf(PSfile,"{%d 0 0 %d 0 0}\n", nx, ny);
   fprintf(PSfile,"{currentfile picstr readhexstring pop} image\n");
+  
+//fprintf(stderr, "DEBUGimg: before\n");////////////////////////////////////
 
   for (ind=0;ind< nx*ny;){
     for(j=0;j<256;++j){
@@ -235,11 +236,15 @@ void PSimage(float xlowleft, float ylowleft, float xlen, float ylen, int nx, int
 	fprintf(PSfile," %02X",(*(picture+ind))&0xFF);
       else
 	fprintf(PSfile," 00");
-      if(ind%16 == 15) printf("\n");
+      if(ind%16 == 15) fprintf(PSfile,"\n");
       ++ind;
     }
   }
+  
+  //fprintf(stderr, "DEBUGimg: end\n");////////////////////////////////////
+
   fprintf(PSfile,"\n\n");
 
   PSgrestore();
+
 }
