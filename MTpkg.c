@@ -356,18 +356,17 @@ fprintf(stderr, "plotfourier() entered, PSfile=%p\n", (void*)PSfile);///////////
   // compute step in Y
   ystep=YLEN/(float)(ntones+1);
 
-  // draw piano keys
-  yleft=10000.;
-  for(inote=0; yleft-TONESTEPS*ystep > YHILEFT-YLEN;++inote){
-    if(inote >= MINNOTE+(double)mintone/TONESTEPS){
-      yleft = YHILEFT-(inote-MINNOTE-(double)mintone/TONESTEPS-0.5)*ystep*TONESTEPS-ystep;
-      ikey=inote % 12;
-      if(ikey == 0 ) PSline(XHILEFT,yleft,XHILEFT+XLEN,yleft,1.,0.,0.,1.);
-      if(ikey == 5) PSline(XHILEFT,yleft,XHILEFT+XLEN,yleft,1.,0.8,0.8,0.8);
-      if(ikey == 1 || ikey == 3 || ikey == 6 || ikey == 8 || ikey == 10)
-	PSrectangleFill(XHILEFT,yleft,XHILEFT+XLEN,yleft-TONESTEPS*ystep,0.8,0.8,0.8);
-    }
-  }
+// draw piano-style background for this plot area
+  paintKeyboardRect(PSfile,
+                    XHILEFT,
+                    YHILEFT,
+                    XLEN,
+                    YLEN,
+                    ntones,
+                    mintone,
+                    MINNOTE,   // from MTpkg.h
+                    TONESTEPS);
+
 
  // draw plot frame
   PSline(XHILEFT,YHILEFT,XHILEFT+XLEN,YHILEFT,2.,0.,0.,0.);
@@ -395,18 +394,26 @@ fprintf(stderr, "plotfourier() entered, PSfile=%p\n", (void*)PSfile);///////////
   //PSline(50, 750, 50+500, 750-700, 1.5, 0.,0.,0.);  // should appear clearly
 
 
-   // draw all points with error bars
-  for(itone=mintone;itone<mintone+ntones;++itone){
-    xpoint = (fourier[itone]-minvalue)*scale+XHILEFT;
-    xlow = (fourier[itone]-sigma[itone]-minvalue)*scale+XHILEFT;
-    if(xlow < XHILEFT) xlow = XHILEFT;
-    xhi = (fourier[itone]+sigma[itone]-minvalue)*scale+XHILEFT;
-    if(xhi > XHILEFT+XLEN) xhi = XHILEFT+XLEN;
-    if(xlow < XHILEFT+XLEN && xhi > XHILEFT)
-      PSline(xlow,YHILEFT-(itone-mintone+1)*ystep,xhi,YHILEFT-(itone-mintone+1)*ystep,1.,0.,0.,0.);
-    if((xpoint >= XHILEFT) && (xpoint <= XHILEFT+XLEN))
-      PScircleFill(xpoint,YHILEFT-(itone-mintone+1)*ystep,POINTRADIUS,0.,0.,0.);
-  }
+	// draw all points with error bars
+	for (itone = mintone; itone < mintone + ntones; ++itone) {
+		xpoint = (fourier[itone] - minvalue) * scale + XHILEFT;
+		xlow   = (fourier[itone] - sigma[itone] - minvalue) * scale + XHILEFT;
+		if (xlow < XHILEFT) xlow = XHILEFT;
+		xhi    = (fourier[itone] + sigma[itone] - minvalue) * scale + XHILEFT;
+		if (xhi > XHILEFT + XLEN) xhi = XHILEFT + XLEN;
+
+		// align marker row with piano-style background
+		double ybase = YHILEFT
+					   - (itone - mintone + 1) * ystep
+					   - (SEMITONE_SHIFT * TONESTEPS) * ystep;
+
+		if (xlow < XHILEFT + XLEN && xhi > XHILEFT)
+			PSline(xlow, ybase, xhi, ybase, 1., 0., 0., 0.);
+
+		if (xpoint >= XHILEFT && xpoint <= XHILEFT + XLEN)
+			PScircleFill(xpoint, ybase, POINTRADIUS, 0., 0., 0.);
+	}
+
 
   PSshowpage();
   ++ipage;
@@ -603,7 +610,59 @@ int readfourier(FILE *f, int *sample, double *seconds, double *avgvol,
 }
 
 
-       
+
+
+  
+void paintKeyboardRect(FILE *PSfile,
+                       double x,
+                       double y_top,
+                       double width,
+                       double height,
+                       int ntones,
+                       int mintone,
+                       double minnote,
+                       int tonesteps)
+{
+    if (!PSfile || ntones <= 0) return;
+
+    // use the SAME spacing as plotfourier()
+    double ystep = height / (double)(ntones + 1);
+
+    for (int i = 0; i < ntones; ++i) {
+        // this is exactly where plotfourier() draws tone i:
+        // y = y_top - (i+1)*ystep
+        double y_center = y_top - (i + 1) * ystep;
+
+        // build the semitone number that corresponds to this tone
+        int note = (int)(minnote + (double)(mintone + i) / tonesteps);
+        int note_in_octave = note % 12;
+
+        int is_white =
+            (note_in_octave == 0 || note_in_octave == 2 ||
+             note_in_octave == 4 || note_in_octave == 5 ||
+             note_in_octave == 7 || note_in_octave == 9 ||
+             note_in_octave == 11);
+
+        double gray = is_white ? 0.9 : 0.35;
+
+        // make the band centered on the same line the plot uses
+        double half = 0.5 * ystep;
+        double y0 = y_center - half;
+        double y1 = y_center + half;
+
+        fprintf(PSfile, "%f setgray\n", gray);
+        fprintf(PSfile,
+                "newpath %.3f %.3f moveto %.3f %.3f lineto %.3f %.3f lineto %.3f %.3f lineto closepath fill\n",
+                x, y0,
+                x + width, y0,
+                x + width, y1,
+                x, y1);
+    }
+
+    // reset
+    fprintf(PSfile, "0 setgray\n");
+}
+     
 
 
 

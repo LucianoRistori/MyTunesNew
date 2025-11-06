@@ -17,6 +17,19 @@
 #include "MTpkg.h"
 #include "PSpkg.h"
 
+//------------------------------------------------------------
+// Plot geometry and tonal mapping
+//------------------------------------------------------------
+#define PLOT_WIDTH     770.0    // points in PostScript
+#define PLOT_HEIGHT    590.0
+#define PLOT_OFFX      10.0
+#define PLOT_OFFY      10.0
+#define MIN_NOTE       9.0      // matches spectrum header convention
+#define TONE_STEPS     3
+#define NFREQS_USED    NFREQS   // can override if subsampling later
+
+
+
 int main(int argc, char *argv[])
 {
     if (argc < 5) {
@@ -62,9 +75,10 @@ int main(int argc, char *argv[])
     }
 
     if (have_ps) {
-        PSopen(psfile);
-        fprintf(stderr, "PostScript output: %s\n", psfile);
-    }
+    PSopen(psfile);
+    fprintf(stderr, "PostScript output: %s\n", psfile);
+	}
+
 
     //------------------------------------------------------------
     // Processing parameters
@@ -98,7 +112,8 @@ int main(int argc, char *argv[])
 
         avgvol = volume(sample);
         seconds = (double)i / sampleRate;
-
+        
+              
         if (i % writeEvery == 0) {
             writefourier_to_file(fspectrum, i, seconds, avgvol,
                                  pfourier, pfourierror);

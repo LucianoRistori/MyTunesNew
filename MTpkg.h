@@ -20,6 +20,9 @@
 // number of frequency steps in one semitone
 #define TONESTEPS (3)
 
+//parameter to tune for perfect alignment of markers to piano keys
+#define SEMITONE_SHIFT 0.40   /* positive => move markers DOWN */
+
 // --- byte-swapping helpers ---
 int flip4bytes(int input);
 short flip2bytes(short input);
@@ -44,5 +47,18 @@ void plotfourier(int isample, double seconds, double avgvol,
                  int mintone, int ntones);
 
 int checkheader(FILE *f);
+
+
+// Paint piano-key background within a plot rectangle
+void paintKeyboardRect(FILE *PSfile,
+                       double x,
+                       double y_top,
+                       double width,
+                       double height,
+                       int ntones,
+                       int mintone,
+                       double minnote,
+                       int tonesteps);
+
 
 #endif // MTPKG_H
